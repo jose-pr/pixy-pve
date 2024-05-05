@@ -1,0 +1,160 @@
+#!/bin/sh
+
+# (C) 2009-2023 Proxmox Server Solutions GmbH <support@proxmox.com>
+
+export PATH=/sbin:/bin:/usr/bin:/usr/sbin
+
+. /functions
+
+/bin/echo "Welcome to the $PRODUCTLONG $RELEASE installer"
+/bin/echo "initial setup startup"
+
+/bin/echo "mounting proc filesystem"
+/bin/mount -nt proc proc /proc
+
+echo "mounting sys filesystem"
+mount -nt sysfs sysfs /sys
+if [ -d /sys/firmware/efi ]; then
+    echo "EFI boot mode detected, mounting efivars filesystem"
+    mount -nt efivarfs efivarfs /sys/firmware/efi/efivars
+fi
+
+# ensure we have a devtmpfs, so that we see the changes from the chroot /dev
+# managed by udev here too, and thus normal path look ups on devices are in
+# sync from the kernel root POV and the installer (ch)root POV
+mount -t devtmpfs devtmpfs /dev
+
+# ensure early that the since 5.15 enabled SYSFB_SIMPLEFB is actually usable
+modprobe -q "simplefb"
+
+echo "boot comandline: $(cat /proc/cmdline)"
+parse_cmdline
+
+# use mdev as firmware loader
+echo /sbin/mdev >/proc/sys/kernel/hotplug
+# initially populate /dev through /sys with cold-plugged devices
+/sbin/mdev -s
+
+DRIVERS="msdos isofs"
+for mod in $DRIVERS; do
+    modprobe -q "$mod"
+done
+
+filenames=
+# Note: skip filenames with spaces (avoid problems with bash IFS)
+# Note: busybox only support -regextype 'posix-basic'
+for fn in $(find /sys/devices/* -regex '^[^\ ]*/modalias'); do
+    filenames="$filenames $fn"
+done
+
+modlist=
+
+
+# for PCI Device classes and subclasses see linux-src/include/linux/pci_ids.h
+# load storage drivers
+
+load_mods  06   # PCI_BASE_CLASS_BRIDGE
+load_mods  03   # PCI_BASE_CLASS_DISPLAY
+
+# we try to have a load order, so that /dev/sda is on IDE
+load_mods  0101 # PCI_CLASS_STORAGE_IDE
+load_mods  0106 # PCI_CLASS_STORAGE_SATA
+load_mods  0107 # PCI_CLASS_STORAGE_SAS
+load_mods  0100 # PCI_CLASS_STORAGE_SCSI
+load_mods  01   # PCI_BASE_CLASS_STORAGE
+
+load_mods  02   # PCI_BASE_CLASS_NETWORK
+
+load_mods # all other
+
+echo "loading drivers: $modlist"
+
+for mod in $modlist; do
+    modprobe "$mod"
+done
+
+stdmod="usb-storage uas usbhid usbkbd hid_generic mac_hid virtio_blk"
+for mod in $stdmod; do
+    modprobe "$mod"
+done
+
+if [ $proxdebug -ne 0 ]; then
+    echo "Debugging mode (type 'exit' or press CTRL-D to continue startup)"
+    debugsh
+fi
+
+BASE_SQFS="/base.squashfs"
+INSTALLER_SQFS="/installer.squashfs"
+
+if [ -f "$INSTALLER_SQFS" ] && [ -f "$BASE_SQFS" ]; then
+
+    # hostid (gethostid(3)) is used by zfs to identify which system imported a pool last it needs
+    # to be present in /etc/hostid before spl.ko is loaded create it in the installer and copy it
+    # over to the targetdir after installation
+    dd if=/dev/urandom of=/etc/hostid bs=1 count=4 status=none
+
+    echo "preparing installer mount points and working environment"
+    if ! mount -t squashfs -o ro,loop "$BASE_SQFS" /mnt/.base; then
+        debugsh_err_reboot "mount '$BASE_SQFS' failed"
+    fi
+
+    if ! mount -t squashfs -o ro,loop "$INSTALLER_SQFS" /mnt/.installer; then
+        debugsh_err_reboot "mount '$INSTALLER_SQFS' failed"
+    fi
+
+    if ! mount -t tmpfs tmpfs /mnt/.workdir; then
+        debugsh_err_reboot "mount overlay workdir failed"
+    fi
+
+    mkdir /mnt/.workdir/work
+    cp -ra /installer /mnt/.workdir/upper
+
+    if ! mount -t overlay -o lowerdir=/mnt/.installer:/mnt/.base,upperdir=/mnt/.workdir/upper,workdir=/mnt/.workdir/work  none /mnt/installer; then
+        debugsh_err_reboot "mount overlayfs failed"
+    fi
+
+    if ! mount --bind / /mnt/installer/mnt/initrd; then
+        debugsh_err_reboot "bind mount initrd failed"
+    fi
+
+    cp /etc/hostid /mnt/installer/etc/
+    cp /.cd-info /mnt/installer/ || true
+
+    if [ -x "/mnt/installer/init" ]; then
+        mount -t devtmpfs devtmpfs /mnt/installer/dev
+
+        echo "switching root from initrd to actual installation system"
+        # and run the installer (via exec, so hand over PID 1)
+        # NOTE: the setsid/redirect dance is really required to have job control in debug shells
+        if ! exec switch_root -c /dev/console /mnt/installer /bin/setsid /bin/sh -c "exec /init </dev/$console >/dev/$console 2>&1"; then
+            debugsh_err_reboot "unable to switch root to installer ($?)"
+        fi
+        # NOTE: should never be reached
+    else
+        debugsh_err_reboot "unable to find installer (/init)"
+    fi
+
+    echo "unexpected return from installer environment, trigger confused reboot now.."
+    cd /
+
+    # Send a SIGKILL to all processes, except for init.
+    kill -s KILL -1
+    sleep 1
+
+    umount /mnt/installer/mnt/initrd
+    umount /mnt/installer
+    umount /mnt/.workdir/
+    umount /mnt/.installer
+    umount /mnt/.base
+
+    umount -a -l
+
+    myreboot
+
+else
+    # or begin normal init for "rescue" boot
+    umount /sys
+    umount /proc
+
+    exec /sbin/switch_root -c /dev/console /mnt sbin/init
+fi

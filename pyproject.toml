@@ -1,0 +1,26 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pixy_pve"
+version = "0.0.1"
+authors = [{ name = "Jose A" }]
+description = "Utility to make Proxomox pxe bootable "
+readme = "README.md"
+requires-python = ">=3.11"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = ['pycdlib']
+
+
+
+[project.urls]
+Homepage = "https://github.com/jose-pr/pixy-pve/"
+Issues = "https://github.com/jose-pr/pixy-pve/issues"
+
+[tool.hatch.build.targets.sdist]
+exclude = ["/.*"]

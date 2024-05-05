@@ -1,0 +1,77 @@
+console=tty1
+
+parse_cmdline() {
+    root=
+    proxdebug=0
+    # shellcheck disable=SC2013
+    for par in $(cat /proc/cmdline); do
+        case $par in
+            proxdebug)
+                proxdebug=1
+            ;;
+            console=tty*)
+                console="${par#console=}"
+                console="${console%%,*}"
+                echo "console is $console"
+            ;;
+        esac
+    done;
+}
+
+myreboot() {
+    echo b > /proc/sysrq-trigger
+    echo "rebooting..."
+    sleep 100
+    exit 0
+}
+
+debugsh() {
+    setsid sh -c "/bin/sh </dev/$console >/dev/$console 2>&1"
+}
+
+debugsh_err_reboot() {
+    errmsg=$1
+
+    echo "" # try to make the message stand out more
+    echo "[ERROR] $errmsg"
+    echo "unable to continue (type exit or CTRL-D to reboot)"
+    debugsh
+    myreboot
+}
+
+load_alias() {
+    alias_fn=$1
+
+    alias=$(cat "${alias_fn}")
+    if [ -n "$alias" ]; then
+        for mod in $(modprobe -q -R "$alias" ); do
+            mod_found=0
+            for m in $modlist; do
+                if [ "$m" = "$mod" ]; then
+                    mod_found=1
+                fi
+            done
+            if [ ${mod_found} -eq "0" ]; then
+                modlist="$modlist $mod"
+            fi
+        done
+    fi
+}
+
+load_mods() {
+    class_prefix=$1
+    for fn in $filenames; do
+        dirname=${fn%/*}
+        if [ -n "$class_prefix" ]; then
+            if [ -f "$dirname/class" ]; then
+                class=$(cat "$dirname/class")
+                class=${class:2:8}
+                if [ "${class_prefix}" = "${class:0:${#class_prefix}}" ]; then
+                    load_alias "$fn"
+                fi
+            fi
+        else
+            load_alias "$fn"
+        fi
+    done
+}
