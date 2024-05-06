@@ -120,18 +120,18 @@ if [ -f "$INSTALLER_SQFS" ] && [ -f "$BASE_SQFS" ]; then
     cp /etc/hostid /mnt/installer/etc/
     cp /.cd-info /mnt/installer/ || true
 
-    if [ -x "/mnt/installer/init" ]; then
+    if [ -x "/mnt/installer/$installer_init" ]; then
         mount -t devtmpfs devtmpfs /mnt/installer/dev
 
         echo "switching root from initrd to actual installation system"
         # and run the installer (via exec, so hand over PID 1)
         # NOTE: the setsid/redirect dance is really required to have job control in debug shells
-        if ! exec switch_root -c /dev/console /mnt/installer /bin/setsid /bin/sh -c "exec /init </dev/$console >/dev/$console 2>&1"; then
+        if ! exec switch_root -c /dev/console /mnt/installer /bin/setsid /bin/sh -c "exec $installer_init </dev/$console >/dev/$console 2>&1"; then
             debugsh_err_reboot "unable to switch root to installer ($?)"
         fi
         # NOTE: should never be reached
     else
-        debugsh_err_reboot "unable to find installer (/init)"
+        debugsh_err_reboot "unable to find installer ($installer_init)"
     fi
 
     echo "unexpected return from installer environment, trigger confused reboot now.."
