@@ -1,6 +1,11 @@
-import pycdlib
+from typing import cast
+import pycdlib, pycpio
 from io import BytesIO
 from pathlib import Path
+
+import pixy_pve
+
+PIXY_PVE_PATH = Path(pixy_pve.__file__).parent
 
 WORKDIR = Path(__file__).parent.parent
 
@@ -14,6 +19,11 @@ PROXMOX_PXE_ROOT.mkdir(0o0755, parents=True, exist_ok=True)
 
 
 
+initrd = cast(pycpio.PyCPIO, pycpio.PyCPIO())
+initrd.append_recursive(PIXY_PVE_PATH / 'initrd', relative=PIXY_PVE_PATH / 'initrd')
+initrd_fh = BytesIO()
+initrd.write_cpio_file(PROXMOX_PXE_ROOT / 'initrd.cpio')
+
 iso = pycdlib.PyCdlib()
 
 iso.open(ISO_PATH)
@@ -21,6 +31,6 @@ iso.open(ISO_PATH)
 iso.get_file_from_iso(PROXMOX_PXE_ROOT / 'vmlimux', rr_path='/boot/linux26')
 iso.get_file_from_iso(PROXMOX_PXE_ROOT/'initrd', rr_path='/boot/initrd.img')
 iso.get_file_from_iso(PROXMOX_PXE_ROOT/'.cd-info', rr_path='/.cd-info')
-iso.get_file_from_iso(PROXMOX_PXE_ROOT/'pve-base.squashfs', rr_path='/base.squashfs')
-iso.get_file_from_iso(PROXMOX_PXE_ROOT/'pve-installer.squashfs', rr_path='/installer.squashfs')
+iso.get_file_from_iso(PROXMOX_PXE_ROOT/'base.squashfs', rr_path='/pve-base.squashfs')
+iso.get_file_from_iso(PROXMOX_PXE_ROOT/'installer.squashfs', rr_path='/pve-installer.squashfs')
 
