@@ -16,7 +16,7 @@ classifiers = [
 ]
 dependencies = [
 'pycdlib',
-'pycpio',
+#'pycpio',
 ]
 
 

@@ -22,7 +22,7 @@ PROXMOX_PXE_ROOT.mkdir(0o0755, parents=True, exist_ok=True)
 INITRD = PROXMOX_PXE_ROOT / "initrd"
 
 
-initrd = cast(pycpio.PyCPIO, pycpio.PyCPIO())
+initrd = pycpio.PyCPIO()
 initrd.append_recursive(PIXY_PVE_PATH / "initrd", relative=PIXY_PVE_PATH / "initrd")
 initrd.write_cpio_file(INITRD)
 
