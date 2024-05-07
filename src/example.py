@@ -30,10 +30,13 @@ iso.open(ISO_PATH)
 
 
 iso.get_file_from_iso(PROXMOX_PXE_ROOT / ".cd-info", rr_path="/.cd-info")
+initrd.append_cpio(PROXMOX_PXE_ROOT / ".cd-info", name=".cd-info")
 iso.get_file_from_iso(PROXMOX_PXE_ROOT / "base.squashfs", rr_path="/pve-base.squashfs")
+initrd.append_cpio(PROXMOX_PXE_ROOT / "base.squashfs", name="base.squashfs")
 iso.get_file_from_iso(
     PROXMOX_PXE_ROOT / "installer.squashfs", rr_path="/pve-installer.squashfs"
 )
+initrd.append_cpio(PROXMOX_PXE_ROOT / "installer.squashfs", name="installer.squashfs")
 iso.get_file_from_iso(PROXMOX_PXE_ROOT / "vmlinuz", rr_path="/boot/linux26")
 
 #
