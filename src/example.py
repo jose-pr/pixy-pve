@@ -18,19 +18,30 @@ PROXMOX_PXE_ROOT = NEXTSERVER / 'proxmox'
 PROXMOX_PXE_ROOT.mkdir(0o0755, parents=True, exist_ok=True)
 
 
+INITRD = PROXMOX_PXE_ROOT / 'initrd'
 
 initrd = cast(pycpio.PyCPIO, pycpio.PyCPIO())
 initrd.append_recursive(PIXY_PVE_PATH / 'initrd', relative=PIXY_PVE_PATH / 'initrd')
 initrd_fh = BytesIO()
-initrd.write_cpio_file(PROXMOX_PXE_ROOT / 'initrd.cpio')
+initrd.write_cpio_file(INITRD)
 
 iso = pycdlib.PyCdlib()
 
 iso.open(ISO_PATH)
 
-iso.get_file_from_iso(PROXMOX_PXE_ROOT / 'vmlimux', rr_path='/boot/linux26')
-iso.get_file_from_iso(PROXMOX_PXE_ROOT/'initrd', rr_path='/boot/initrd.img')
+
 iso.get_file_from_iso(PROXMOX_PXE_ROOT/'.cd-info', rr_path='/.cd-info')
 iso.get_file_from_iso(PROXMOX_PXE_ROOT/'base.squashfs', rr_path='/pve-base.squashfs')
 iso.get_file_from_iso(PROXMOX_PXE_ROOT/'installer.squashfs', rr_path='/pve-installer.squashfs')
 
+
+iso.get_file_from_iso(PROXMOX_PXE_ROOT / 'vmlinuz', rr_path='/boot/linux26')
+
+iso.get_file_from_iso_fp(initrd_fh, rr_path='/boot/initrd.img')
+
+padding =  512 - initrd_fh.getbuffer().nbytes % 512
+if padding:
+    initrd_fh.write(bytes(512))
+initrd_fh.write(INITRD.read_bytes())
+initrd_fh.seek(0)
+INITRD.write_bytes(initrd_fh.read())
