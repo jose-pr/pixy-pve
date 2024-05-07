@@ -14,10 +14,6 @@ export PATH=/sbin:/bin:/usr/bin:/usr/sbin
 
 echo "mounting sys filesystem"
 mount -nt sysfs sysfs /sys
-if [ -d /sys/firmware/efi ]; then
-    echo "EFI boot mode detected, mounting efivars filesystem"
-    mount -nt efivarfs efivarfs /sys/firmware/efi/efivars
-fi
 
 # ensure we have a devtmpfs, so that we see the changes from the chroot /dev
 # managed by udev here too, and thus normal path look ups on devices are in
@@ -35,18 +31,6 @@ echo /sbin/mdev >/proc/sys/kernel/hotplug
 # initially populate /dev through /sys with cold-plugged devices
 /sbin/mdev -s
 
-DRIVERS="msdos isofs"
-for mod in $DRIVERS; do
-    modprobe -q "$mod"
-done
-
-filenames=
-# Note: skip filenames with spaces (avoid problems with bash IFS)
-# Note: busybox only support -regextype 'posix-basic'
-for fn in $(find /sys/devices/* -regex '^[^\ ]*/modalias'); do
-    filenames="$filenames $fn"
-done
-
 modlist=
 
 
@@ -55,17 +39,8 @@ modlist=
 
 load_mods  06   # PCI_BASE_CLASS_BRIDGE
 load_mods  03   # PCI_BASE_CLASS_DISPLAY
-
-# we try to have a load order, so that /dev/sda is on IDE
-load_mods  0101 # PCI_CLASS_STORAGE_IDE
-load_mods  0106 # PCI_CLASS_STORAGE_SATA
-load_mods  0107 # PCI_CLASS_STORAGE_SAS
-load_mods  0100 # PCI_CLASS_STORAGE_SCSI
 load_mods  01   # PCI_BASE_CLASS_STORAGE
-
 load_mods  02   # PCI_BASE_CLASS_NETWORK
-
-load_mods # all other
 
 echo "loading drivers: $modlist"
 
@@ -73,8 +48,7 @@ for mod in $modlist; do
     modprobe "$mod"
 done
 
-stdmod="usb-storage uas usbhid usbkbd hid_generic mac_hid virtio_blk"
-for mod in $stdmod; do
+for mod in usbhid usbkbd hid_generic mac_hid; do
     modprobe "$mod"
 done
 
