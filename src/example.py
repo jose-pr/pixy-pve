@@ -1,4 +1,3 @@
-from typing import cast
 import pycdlib, pycpio
 from io import BytesIO
 from pathlib import Path
@@ -24,7 +23,6 @@ INITRD = PROXMOX_PXE_ROOT / "initrd"
 
 initrd = pycpio.PyCPIO()
 initrd.append_recursive(PIXY_PVE_PATH / "initrd", relative=PIXY_PVE_PATH / "initrd")
-initrd.write_cpio_file(INITRD)
 
 iso = pycdlib.PyCdlib()
 
@@ -46,6 +44,9 @@ iso.get_file_from_iso_fp(initrd_fh, rr_path="/boot/initrd.img")
 padding = CPIO_ALIGMENT - initrd_fh.getbuffer().nbytes % CPIO_ALIGMENT
 if padding:
     initrd_fh.write(bytes(padding))
-initrd_fh.write(INITRD.read_bytes())
+added = initrd_fh.getbuffer().nbytes
+initrd.write_fp(initrd_fh)
+added = initrd_fh.getbuffer().nbytes - added
+print(added)
 initrd_fh.seek(0)
 INITRD.write_bytes(initrd_fh.read())
