@@ -5,24 +5,25 @@ from pathlib import Path
 
 import pixy_pve
 
+CPIO_ALIGMENT = 512
 PIXY_PVE_PATH = Path(pixy_pve.__file__).parent
 
 WORKDIR = Path(__file__).parent.parent
 
-ISO_PATH = WORKDIR / 'isos' / 'proxmox.iso'
-NEXTSERVER = WORKDIR / 'nextserver'
+ISO_PATH = WORKDIR / "isos" / "proxmox.iso"
+NEXTSERVER = WORKDIR / "nextserver"
 
 NEXTSERVER = NEXTSERVER.resolve()
-PROXMOX_PXE_ROOT = NEXTSERVER / 'proxmox'
+PROXMOX_PXE_ROOT = NEXTSERVER / "proxmox"
 
 PROXMOX_PXE_ROOT.mkdir(0o0755, parents=True, exist_ok=True)
 
 
-INITRD = PROXMOX_PXE_ROOT / 'initrd'
+INITRD = PROXMOX_PXE_ROOT / "initrd"
+
 
 initrd = cast(pycpio.PyCPIO, pycpio.PyCPIO())
-initrd.append_recursive(PIXY_PVE_PATH / 'initrd', relative=PIXY_PVE_PATH / 'initrd')
-initrd_fh = BytesIO()
+initrd.append_recursive(PIXY_PVE_PATH / "initrd", relative=PIXY_PVE_PATH / "initrd")
 initrd.write_cpio_file(INITRD)
 
 iso = pycdlib.PyCdlib()
@@ -30,18 +31,21 @@ iso = pycdlib.PyCdlib()
 iso.open(ISO_PATH)
 
 
-iso.get_file_from_iso(PROXMOX_PXE_ROOT/'.cd-info', rr_path='/.cd-info')
-iso.get_file_from_iso(PROXMOX_PXE_ROOT/'base.squashfs', rr_path='/pve-base.squashfs')
-iso.get_file_from_iso(PROXMOX_PXE_ROOT/'installer.squashfs', rr_path='/pve-installer.squashfs')
+iso.get_file_from_iso(PROXMOX_PXE_ROOT / ".cd-info", rr_path="/.cd-info")
+iso.get_file_from_iso(PROXMOX_PXE_ROOT / "base.squashfs", rr_path="/pve-base.squashfs")
+iso.get_file_from_iso(
+    PROXMOX_PXE_ROOT / "installer.squashfs", rr_path="/pve-installer.squashfs"
+)
+iso.get_file_from_iso(PROXMOX_PXE_ROOT / "vmlinuz", rr_path="/boot/linux26")
 
-
-iso.get_file_from_iso(PROXMOX_PXE_ROOT / 'vmlinuz', rr_path='/boot/linux26')
-
-iso.get_file_from_iso_fp(initrd_fh, rr_path='/boot/initrd.img')
-
-padding =  512 - initrd_fh.getbuffer().nbytes % 512
+#
+# Extract initrd and append to it
+#
+initrd_fh = BytesIO()
+iso.get_file_from_iso_fp(initrd_fh, rr_path="/boot/initrd.img")
+padding = CPIO_ALIGMENT - initrd_fh.getbuffer().nbytes % CPIO_ALIGMENT
 if padding:
-    initrd_fh.write(bytes(512))
+    initrd_fh.write(bytes(padding))
 initrd_fh.write(INITRD.read_bytes())
 initrd_fh.seek(0)
 INITRD.write_bytes(initrd_fh.read())
