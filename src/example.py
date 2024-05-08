@@ -41,21 +41,22 @@ with INITRD.open("wb") as initrd_fh:
     if padding:
         initrd_fh.write(bytes(padding))
 
-    initrd = pycpio.writer.CPIOWriter(initrd_fh)
-    initrd.write(
-        CPIOData.from_dir(PIXY_PVE_PATH / "initrd", relative=PIXY_PVE_PATH / "initrd")
-    )
-
-    for path in [".cd-info", "pve-base.squashfs", "pve-installer.squashfs"]:
-        rr_path = PurePosixPath("/") / path
-        buffer = BytesIO()
-        iso.get_file_from_iso_fp(buffer, rr_path=rr_path.as_posix())
-        entry = CPIO_File(
-            buffer.getbuffer(),
-            header=CPIOHeader(
-                name=rr_path.name,
-                mode=CPIOModes.File.value | 0o644,
-            ),
+    with pycpio.writer.CPIOWriter(initrd_fh) as initrd:
+        initrd.write(
+            CPIOData.from_dir(
+                PIXY_PVE_PATH / "initrd", relative=PIXY_PVE_PATH / "initrd"
+            )
         )
-        initrd.write(entry)
-    initrd.close()
+
+        for path in [".cd-info", "pve-base.squashfs", "pve-installer.squashfs"]:
+            rr_path = PurePosixPath("/") / path
+            buffer = BytesIO()
+            iso.get_file_from_iso_fp(buffer, rr_path=rr_path.as_posix())
+            entry = CPIO_File(
+                buffer.getbuffer(),
+                header=CPIOHeader(
+                    name=rr_path.name,
+                    mode=CPIOModes.File.value | 0o644,
+                ),
+            )
+            initrd.write(entry)
