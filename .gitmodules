@@ -1,6 +1,3 @@
 [submodule "vendor/pycpio"]
 	path = vendor/pycpio
 	url = https://github.com/jose-pr/pycpio.git
-[submodule "vendor/zenlib"]
-	path = vendor/zenlib
-	url = https://github.com/jose-pr/zenlib.git
