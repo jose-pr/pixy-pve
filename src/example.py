@@ -1,8 +1,18 @@
-import pycdlib, pycpio
 from io import BytesIO
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+
+import pycdlib
+import pycdlib.dr
+import pycdlib.inode
+import pycdlib.rockridge
 
 import pixy_pve
+import pycpio
+import pycpio.writer
+from pycpio.cpio.data import CPIOData
+from pycpio.cpio.file import CPIO_File
+from pycpio.header.cpioheader import CPIOHeader
+from pycpio.masks.modes import CPIOModes
 
 CPIO_ALIGMENT = 512
 PIXY_PVE_PATH = Path(pixy_pve.__file__).parent
@@ -21,35 +31,31 @@ PROXMOX_PXE_ROOT.mkdir(0o0755, parents=True, exist_ok=True)
 INITRD = PROXMOX_PXE_ROOT / "initrd"
 
 
-initrd = pycpio.PyCPIO()
-initrd.append_recursive(PIXY_PVE_PATH / "initrd", relative=PIXY_PVE_PATH / "initrd")
-
 iso = pycdlib.PyCdlib()
-
 iso.open(ISO_PATH)
-
-
-iso.get_file_from_iso(PROXMOX_PXE_ROOT / ".cd-info", rr_path="/.cd-info")
-initrd.append_cpio(PROXMOX_PXE_ROOT / ".cd-info", name=".cd-info")
-iso.get_file_from_iso(PROXMOX_PXE_ROOT / "base.squashfs", rr_path="/pve-base.squashfs")
-initrd.append_cpio(PROXMOX_PXE_ROOT / "base.squashfs", name="base.squashfs")
-iso.get_file_from_iso(
-    PROXMOX_PXE_ROOT / "installer.squashfs", rr_path="/pve-installer.squashfs"
-)
-initrd.append_cpio(PROXMOX_PXE_ROOT / "installer.squashfs", name="installer.squashfs")
 iso.get_file_from_iso(PROXMOX_PXE_ROOT / "vmlinuz", rr_path="/boot/linux26")
+with INITRD.open("wb") as initrd_fh:
+    record: pycdlib.dr.DirectoryRecord = iso.get_record(rr_path="/boot/initrd.img")
+    iso.get_file_from_iso_fp(initrd_fh, rr_path="/boot/initrd.img")
+    padding = CPIO_ALIGMENT - record.get_data_length() % CPIO_ALIGMENT
+    if padding:
+        initrd_fh.write(bytes(padding))
 
-#
-# Extract initrd and append to it
-#
-initrd_fh = BytesIO()
-iso.get_file_from_iso_fp(initrd_fh, rr_path="/boot/initrd.img")
-padding = CPIO_ALIGMENT - initrd_fh.getbuffer().nbytes % CPIO_ALIGMENT
-if padding:
-    initrd_fh.write(bytes(padding))
-added = initrd_fh.getbuffer().nbytes
-initrd.write_fp(initrd_fh)
-added = initrd_fh.getbuffer().nbytes - added
-print(added)
-initrd_fh.seek(0)
-INITRD.write_bytes(initrd_fh.read())
+    initrd = pycpio.writer.CPIOWriter(initrd_fh)
+    initrd.write(
+        CPIOData.from_dir(PIXY_PVE_PATH / "initrd", relative=PIXY_PVE_PATH / "initrd")
+    )
+
+    for path in [".cd-info", "pve-base.squashfs", "pve-installer.squashfs"]:
+        rr_path = PurePosixPath("/") / path
+        buffer = BytesIO()
+        iso.get_file_from_iso_fp(buffer, rr_path=rr_path.as_posix())
+        entry = CPIO_File(
+            buffer.getbuffer(),
+            header=CPIOHeader(
+                name=rr_path.name,
+                mode=CPIOModes.File.value | 0o644,
+            ),
+        )
+        initrd.write(entry)
+    initrd.close()
